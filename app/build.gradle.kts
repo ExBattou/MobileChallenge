@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -71,6 +72,13 @@ dependencies {
     implementation ("androidx.compose.material:material:1.7.2")
     implementation ("androidx.compose.foundation:foundation:1.7.2")
     implementation("androidx.navigation:navigation-compose:2.5.3")
+    implementation ("androidx.datastore:datastore-preferences:1.0.0")
+
+
+    implementation ("androidx.room:room-runtime:2.6.1")
+    annotationProcessor ("androidx.room:room-compiler:2.6.1")
+    kapt("androidx.room:room-compiler:2.5.0") // If using Kotlin
+    implementation("androidx.compose.runtime:runtime-livedata:1.3.3")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

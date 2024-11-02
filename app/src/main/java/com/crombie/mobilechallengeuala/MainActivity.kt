@@ -18,6 +18,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,14 +26,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.LiveData
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.room.Room
 import com.crombie.mobilechallengeuala.ui.theme.MobileChallengeUALATheme
 import com.crombie.mobilechallengeuala.ui.theme.Model.City
+import com.crombie.mobilechallengeuala.ui.theme.db.AppDatabase
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.gson.Gson
@@ -40,6 +44,7 @@ import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,8 +60,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MobileChallengeUALATheme {
                 val navController = rememberNavController()
+                val cityDao = DatabaseProvider.database.cityDao()
+                val cities by cityDao.getAll().observeAsState(emptyList())
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MyNavHost(navController)
+                    MyNavHost(navController, cities)
                 }
             }
         }
@@ -66,9 +73,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MyNavHost(navHostController: NavHostController) {
+fun MyNavHost(navHostController: NavHostController, cities:List<City>) {
+
     NavHost(navController = navHostController, startDestination = "home") {
-        composable("home") { CityListView(navHostController) }
+        composable("home") { CityListView(navHostController, cities) }
         composable(route = "map/{lat}/{long}",
             arguments = listOf(
                 navArgument("lat") { type = NavType.StringType },
@@ -84,14 +92,18 @@ fun MyNavHost(navHostController: NavHostController) {
 
 
 @Composable
-fun CityListView(navHostController: NavHostController) {
+fun CityListView(navHostController: NavHostController, cities: List<City>) {
     val cityList = remember { mutableStateListOf<City>() }
     var isLoading by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         coroutineScope.launch {
+
             try {
+                if (cities.isNotEmpty()){
+                    cityList.addAll(cities)
+                }
                 if (cityList.isEmpty()){
                     cityList.addAll(fetchCitiesFromGist("https://gist.githubusercontent.com/hernan-uala/dce8843a8edbe0b0018b32e137bc2b3a/raw/0996accf70cb0ca0e16f9a99e0ee185fafca7af1/cities.json"))
                 }
@@ -120,6 +132,7 @@ fun CityListPreview() {
             coroutineScope.launch {
                 try {
                     cityList.addAll(fetchCitiesFromGist("https://gist.githubusercontent.com/hernan-uala/dce8843a8edbe0b0018b32e137bc2b3a/raw/0996accf70cb0ca0e16f9a99e0ee185fafca7af1/cities.json"))
+
                 } finally {
                     isLoading = false
                 }
@@ -151,7 +164,7 @@ fun CityList(cities: List<City>, navController: NavHostController) {
         LazyColumn {
             items(filteredCities) { city ->
                 CityRow(city) { selectedCity ->
-                    navController.navigate("map/${selectedCity.coord.lat}/${selectedCity.coord.lon}")
+                    navController.navigate("map/${selectedCity.lat}/${selectedCity.lon}")
                 }
             }
         }
@@ -165,10 +178,7 @@ fun CityRow(city: City, onClick: (City) -> Unit) {
         Row() {
             Text(text = "${city.name}, ${city.country}")
         }
-
-
     }
-
 }
 
 suspend fun fetchCitiesFromGist(urlString: String): List<City> = withContext(Dispatchers.IO) {
