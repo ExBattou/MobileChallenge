@@ -1,5 +1,7 @@
 package com.crombie.mobilechallengeuala
 
+import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -31,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -47,11 +50,17 @@ import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.net.URL
+import kotlin.io.path.exists
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
+val  BASE_URL = "https://gist.githubusercontent.com/hernan-uala/dce8843a8edbe0b0018b32e137bc2b3a/raw/0996accf70cb0ca0e16f9a99e0ee185fafca7af1/cities.json"
 
 
 class MainActivity : ComponentActivity() {
@@ -85,11 +94,22 @@ fun MyNavHost(navHostController: NavHostController) {
         ) { backStackEntry ->
             val lat = backStackEntry.arguments?.getString("lat")?.toDoubleOrNull() ?: 0.0
             val long = backStackEntry.arguments?.getString("long")?.toDoubleOrNull() ?: 0.0
-            Column {
-                BackButton { navHostController.popBackStack() }
-                GoogleMap(lat, long)
-            }
 
+            val configuration = LocalConfiguration.current
+            when (configuration.orientation) {
+                Configuration.ORIENTATION_LANDSCAPE -> {
+                    Row {
+                        CityListView(navHostController)
+                        GoogleMap(lat, long)
+                    }
+                }
+                Configuration.ORIENTATION_PORTRAIT -> {
+                    Column {
+                        BackButton { navHostController.popBackStack() }
+                        GoogleMap(lat, long)
+                    }
+                }
+            }
         }
     }
 }
@@ -100,6 +120,7 @@ fun CityListView(navHostController: NavHostController) {
     val cityList = remember { mutableStateListOf<City>() }
     var isLoading by remember { mutableStateOf(true) }
     val coroutineScope = rememberCoroutineScope()
+
 
     LaunchedEffect(Unit) {
         coroutineScope.launch {
@@ -120,6 +141,22 @@ fun CityListView(navHostController: NavHostController) {
     }
 }
 
+@Composable
+fun checkOrientation(cityList: List<City>, navHostController: NavHostController) {
+    val configuration = LocalConfiguration.current
+    when (configuration.orientation) {
+        Configuration.ORIENTATION_LANDSCAPE -> {
+            Row {
+                CityList(cityList,navHostController)
+                GoogleMap()
+            }
+        }
+        Configuration.ORIENTATION_PORTRAIT -> {
+            CityList(cityList,navHostController)
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun CityListPreview() {
@@ -131,7 +168,8 @@ fun CityListPreview() {
         LaunchedEffect(Unit) {
             coroutineScope.launch {
                 try {
-                    cityList.addAll(fetchCitiesFromGist("https://gist.githubusercontent.com/hernan-uala/dce8843a8edbe0b0018b32e137bc2b3a/raw/0996accf70cb0ca0e16f9a99e0ee185fafca7af1/cities.json"))
+                    cityList.addAll(
+                        fetchCitiesFromGist(BASE_URL))
                 } finally {
                     isLoading = false
                 }
@@ -177,8 +215,6 @@ fun CityRow(city: City, onClick: (City) -> Unit) {
         Row() {
             Text(text = "${city.name}, ${city.country}")
         }
-
-
     }
 
 }
@@ -194,8 +230,30 @@ suspend fun fetchCitiesFromGist(urlString: String): List<City> = withContext(Dis
     }
 }
 
+suspend fun fetchCitiesFromGist(context: Context, urlString: String): List<City> = withContext(Dispatchers.IO) {
+    val file = File(context.filesDir, "cities.json") // Create a file in internal storage
+
+    if (file.exists()) {
+        // Read from local file if it exists
+        val jsonString = file.readText()
+        val gson = Gson()
+        return@withContext gson.fromJson(jsonString, Array<City>::class.java).toList()
+    } else {
+        // Fetch from Gist and save to local file
+        try {
+            val response = URL(urlString).readText()
+            file.writeText(response) // Save to local file
+            val gson = Gson()
+            return@withContext gson.fromJson(response, Array<City>::class.java).toList()
+        } catch (e: Exception) {
+            Log.e("FetchCities", "Error fetching or parsing cities", e)
+            return@withContext emptyList()
+        }
+    }
+}
+
 @Composable
-fun GoogleMap(lat: Double, lng: Double) {
+fun GoogleMap(lat: Double = 39.934444, lng: Double = 43.600555) {
     val where = LatLng(lat, lng)
     val whereMarketState = rememberMarkerState(position = where)
     val cameraPositionState = rememberCameraPositionState {
